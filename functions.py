@@ -5,17 +5,31 @@ def lire_fichier(fichier):
     """Lire un fichier (Excel ou CSV) et retourner un DataFrame."""
     if fichier.name.endswith(('.xlsx', '.xls')):
         return pd.read_excel(fichier, engine='openpyxl')
+    
     elif fichier.name.endswith('.csv'):
-        # Essayer plusieurs encodages pour éviter les erreurs
         encodages = ['utf-8', 'latin1', 'ISO-8859-1', 'cp1252']
+        separateurs = [',', ';', '\t']  # Teste virgule, point-virgule et tabulation
+        
         for encodage in encodages:
-            try:
-                return pd.read_csv(fichier, sep=',', decimal='.', encoding=encodage)
-            except UnicodeDecodeError:
-                continue
-        raise ValueError("Impossible de lire le fichier CSV. Encodage non supporté.")
+            for sep in separateurs:
+                try:
+                    # On lit quelques lignes pour tester
+                    df_test = pd.read_csv(fichier, sep=sep, decimal='.', encoding=encodage, nrows=5)
+                    
+                    # Si on a plus d'une colonne, c'est probablement le bon séparateur
+                    if len(df_test.columns) > 1:
+                        # On recharge tout le fichier avec les bons paramètres
+                        fichier.seek(0) # Remet le curseur au début car on a lu 5 lignes avant
+                        return pd.read_csv(fichier, sep=sep, decimal='.', encoding=encodage)
+                except Exception:
+                    continue
+        
+        # Fallback : essayer de lire tel quel si rien ne marche
+        fichier.seek(0)
+        return pd.read_csv(fichier, encoding='utf-8') # Peut échouer si mauvais sep
+    
     else:
-        raise ValueError("Format de fichier non supporté. Utilisez .xlsx, .xls ou .csv.")
+        raise ValueError("Format de fichier non supporté.")
 
 def exporter_vers_epw(df_source, df_dest, nd_donnees=8760):
     """
