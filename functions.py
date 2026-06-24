@@ -5,33 +5,24 @@ def lire_fichier(fichier):
     """Lire un fichier (Excel ou CSV) et retourner un DataFrame."""
     if fichier.name.endswith(('.xlsx', '.xls')):
         return pd.read_excel(fichier, engine='openpyxl')
-    
     elif fichier.name.endswith('.csv'):
-        # 1. On lit le contenu brut pour détecter le séparateur
-        contenu = fichier.read().decode('utf-8', errors='ignore') # Ignore les erreurs de décodage pour la détection
-        fichier.seek(0) # On remet le curseur au début pour la vraie lecture
-        
-        # Détection simple : si la première ligne contient des ';', on utilise ';', sinon ','
-        premiere_ligne = contenu.split('\n')[0]
-        separateur = ';' if ';' in premiere_ligne else ','
-        
-        # 2. On teste les encodages avec le BON séparateur détecté
-        encodages = ['utf-8', 'latin1', 'cp1252', 'ISO-8859-1']
+        # MODIFICATION ICI : On teste 'latin1' et 'cp1252' AVANT 'utf-8'
+        # Car les fichiers météo (EPW/TRACC) contiennent souvent des symboles ° (0xb0) incompatibles avec utf-8 strict
+        encodages = ['latin1', 'cp1252', 'utf-8', 'ISO-8859-1']
         
         for encodage in encodages:
             try:
-                fichier.seek(0) # Reset avant chaque tentative
-                return pd.read_csv(fichier, sep=separateur, decimal='.', encoding=encodage)
-            except (UnicodeDecodeError, ValueError):
+                fichier.seek(0) # Réinitialise le curseur à chaque tentative
+                # On garde votre séparateur par défaut (virgule). 
+                # Si le fichier utilise ';', il faudra le changer ici une fois pour toutes.
+                return pd.read_csv(fichier, sep=',', decimal='.', encoding=encodage)
+            except UnicodeDecodeError:
                 continue
         
-        # Si aucun encodage ne marche, on essaie en UTF-8 strict (votre code original)
-        fichier.seek(0)
-        return pd.read_csv(fichier, sep=',', decimal='.', encoding='utf-8')
-        
+        # Si aucun encodage ne marche, on lève l'erreur
+        raise ValueError("Impossible de lire le fichier CSV. Encodage non supporté.")
     else:
         raise ValueError("Format de fichier non supporté. Utilisez .xlsx, .xls ou .csv.")
-
 def exporter_vers_epw(df_source, df_dest, nd_donnees=8760):
     """
     Adapter les données du fichier TRACC vers le format EPW.
