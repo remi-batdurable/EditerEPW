@@ -1,35 +1,57 @@
 import pandas as pd
-import numpy as np
+import io
 
 def lire_fichier(fichier):
-    """Lire un fichier (Excel ou CSV) et retourner un DataFrame."""
+    """
+    Lire un fichier (Excel ou CSV) et retourner un DataFrame.
+    Gère automatiquement les encodages (UTF-8, Latin-1, CP1252) et les séparateurs.
+    """
+    # 1. Gestion des fichiers Excel
     if fichier.name.endswith(('.xlsx', '.xls')):
         return pd.read_excel(fichier, engine='openpyxl')
     
+    # 2. Gestion des fichiers CSV
     elif fichier.name.endswith('.csv'):
-        encodages = ['utf-8', 'latin1', 'ISO-8859-1', 'cp1252']
-        separateurs = [',', ';', '\t']  # Teste virgule, point-virgule et tabulation
+        # Ordre de priorité des encodages (les fichiers météo sont souvent en Latin-1 ou CP1252)
+        encodages = ['utf-8', 'latin1', 'cp1252', 'ISO-8859-1']
+        separateurs = [',', ';', '\t']
+        
+        # On lit le contenu binaire une seule fois pour éviter les problèmes de stream
+        contenu_binaire = fichier.read()
         
         for encodage in encodages:
             for sep in separateurs:
                 try:
-                    # On lit quelques lignes pour tester
-                    df_test = pd.read_csv(fichier, sep=sep, decimal='.', encoding=encodage, nrows=5)
+                    # On décode le binaire en texte avec l'encodage testé
+                    texte_decode = contenu_binaire.decode(encodage)
                     
-                    # Si on a plus d'une colonne, c'est probablement le bon séparateur
+                    # On crée un objet fichier simulé pour pandas
+                    fichier_simule = io.StringIO(texte_decode)
+                    
+                    # Tentative de lecture avec 5 lignes pour valider la structure
+                    df_test = pd.read_csv(fichier_simule, sep=sep, decimal='.', nrows=5)
+                    
+                    # Critère de validation : 
+                    # 1. Plus d'une colonne (le séparateur fonctionne)
+                    # 2. Pas d'erreur de parsing majeure
                     if len(df_test.columns) > 1:
-                        # On recharge tout le fichier avec les bons paramètres
-                        fichier.seek(0) # Remet le curseur au début car on a lu 5 lignes avant
-                        return pd.read_csv(fichier, sep=sep, decimal='.', encoding=encodage)
-                except Exception:
+                        # Succès ! On recharge tout le contenu avec les bons paramètres
+                        fichier_simule = io.StringIO(texte_decode)
+                        return pd.read_csv(fichier_simule, sep=sep, decimal='.')
+                        
+                except (UnicodeDecodeError, ValueError, pd.errors.ParserError):
+                    # On passe à la combinaison suivante
                     continue
         
-        # Fallback : essayer de lire tel quel si rien ne marche
-        fichier.seek(0)
-        return pd.read_csv(fichier, encoding='utf-8') # Peut échouer si mauvais sep
+        # Si rien n'a fonctionné, on lève une erreur claire
+        raise ValueError(
+            f"Impossible de lire le fichier '{fichier.name}'. "
+            "Aucune combinaison encodage/séparateur n'a fonctionné. "
+            "Vérifiez que le fichier n'est pas corrompu."
+        )
     
     else:
-        raise ValueError("Format de fichier non supporté.")
+        raise ValueError("Format de fichier non supporté. Utilisez .xlsx, .xls ou .csv.")
 
 def exporter_vers_epw(df_source, df_dest, nd_donnees=8760):
     """
