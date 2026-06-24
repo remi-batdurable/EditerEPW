@@ -7,7 +7,15 @@ def lire_fichier(fichier):
     if fichier.name.endswith(('.xlsx', '.xls')):
         return pd.read_excel(fichier, engine='openpyxl')
     elif fichier.name.endswith('.csv'):
-        return pd.read_csv(fichier, sep=',', decimal='.')
+        # Essayer plusieurs encodages courants
+        encodages = ['utf-8', 'latin1', 'ISO-8859-1', 'cp1252']
+        for encodage in encodages:
+            try:
+                return pd.read_csv(fichier, sep=',', decimal='.', encoding=encodage)
+            except UnicodeDecodeError:
+                continue
+        # Si aucun encodage ne fonctionne, lever une erreur
+        raise ValueError("Impossible de lire le fichier CSV. Encodage non supporté.")
     else:
         raise ValueError("Format de fichier non supporté. Utilisez .xlsx, .xls ou .csv.")
 
