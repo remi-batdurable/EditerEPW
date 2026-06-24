@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 from datetime import datetime
-import openpyxl
 
 def lire_fichier_excel(fichier, feuille=0):
     """Lire un fichier Excel et retourner un DataFrame."""
