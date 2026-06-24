@@ -2,54 +2,33 @@ import pandas as pd
 import io
 
 def lire_fichier(fichier):
-    """
-    Lire un fichier (Excel ou CSV) et retourner un DataFrame.
-    Gère automatiquement les encodages (UTF-8, Latin-1, CP1252) et les séparateurs.
-    """
-    # 1. Gestion des fichiers Excel
+    """Lire un fichier (Excel ou CSV) et retourner un DataFrame."""
     if fichier.name.endswith(('.xlsx', '.xls')):
         return pd.read_excel(fichier, engine='openpyxl')
     
-    # 2. Gestion des fichiers CSV
     elif fichier.name.endswith('.csv'):
-        # Ordre de priorité des encodages (les fichiers météo sont souvent en Latin-1 ou CP1252)
-        encodages = ['utf-8', 'latin1', 'cp1252', 'ISO-8859-1']
-        separateurs = [',', ';', '\t']
+        # 1. On lit le contenu brut pour détecter le séparateur
+        contenu = fichier.read().decode('utf-8', errors='ignore') # Ignore les erreurs de décodage pour la détection
+        fichier.seek(0) # On remet le curseur au début pour la vraie lecture
         
-        # On lit le contenu binaire une seule fois pour éviter les problèmes de stream
-        contenu_binaire = fichier.read()
+        # Détection simple : si la première ligne contient des ';', on utilise ';', sinon ','
+        premiere_ligne = contenu.split('\n')[0]
+        separateur = ';' if ';' in premiere_ligne else ','
+        
+        # 2. On teste les encodages avec le BON séparateur détecté
+        encodages = ['utf-8', 'latin1', 'cp1252', 'ISO-8859-1']
         
         for encodage in encodages:
-            for sep in separateurs:
-                try:
-                    # On décode le binaire en texte avec l'encodage testé
-                    texte_decode = contenu_binaire.decode(encodage)
-                    
-                    # On crée un objet fichier simulé pour pandas
-                    fichier_simule = io.StringIO(texte_decode)
-                    
-                    # Tentative de lecture avec 5 lignes pour valider la structure
-                    df_test = pd.read_csv(fichier_simule, sep=sep, decimal='.', nrows=5)
-                    
-                    # Critère de validation : 
-                    # 1. Plus d'une colonne (le séparateur fonctionne)
-                    # 2. Pas d'erreur de parsing majeure
-                    if len(df_test.columns) > 1:
-                        # Succès ! On recharge tout le contenu avec les bons paramètres
-                        fichier_simule = io.StringIO(texte_decode)
-                        return pd.read_csv(fichier_simule, sep=sep, decimal='.')
-                        
-                except (UnicodeDecodeError, ValueError, pd.errors.ParserError):
-                    # On passe à la combinaison suivante
-                    continue
+            try:
+                fichier.seek(0) # Reset avant chaque tentative
+                return pd.read_csv(fichier, sep=separateur, decimal='.', encoding=encodage)
+            except (UnicodeDecodeError, ValueError):
+                continue
         
-        # Si rien n'a fonctionné, on lève une erreur claire
-        raise ValueError(
-            f"Impossible de lire le fichier '{fichier.name}'. "
-            "Aucune combinaison encodage/séparateur n'a fonctionné. "
-            "Vérifiez que le fichier n'est pas corrompu."
-        )
-    
+        # Si aucun encodage ne marche, on essaie en UTF-8 strict (votre code original)
+        fichier.seek(0)
+        return pd.read_csv(fichier, sep=',', decimal='.', encoding='utf-8')
+        
     else:
         raise ValueError("Format de fichier non supporté. Utilisez .xlsx, .xls ou .csv.")
 
