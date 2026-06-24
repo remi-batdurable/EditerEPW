@@ -1,5 +1,5 @@
 import streamlit as st
-from functions import lire_fichier, exporter_vers_epw, formater_dates, exporter_en_csv
+from functions import lire_fichier, exporter_vers_epw, exporter_en_csv
 import pandas as pd
 import os
 
@@ -47,15 +47,14 @@ if fichier_source:
                         # Adapter les données
                         df_dest = exporter_vers_epw(df_source, df_dest)
 
-                        # Formater les dates
-                        df_dest = formater_dates(df_dest)
-
                         # Générer un nom de fichier CSV
                         nom_csv = os.path.splitext(fichier_dest.name)[0] + "_export.csv"
 
+                        # Exporter en CSV avec des points comme décimales
+                        csv_data = df_dest.to_csv(index=False, sep=',', decimal='.')
+
                         # Proposer le téléchargement
                         st.success("Exportation réussie !")
-                        csv_data = df_dest.to_csv(index=False, sep=',', decimal='.')
                         st.download_button(
                             label="Télécharger le fichier CSV",
                             data=csv_data.encode('utf-8'),
