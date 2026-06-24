@@ -1,20 +1,14 @@
 import streamlit as st
 import pandas as pd
 import io
-import re
+import csv
 
-st.set_page_config(page_title="Éditeur EPW Robuste", layout="wide")
+st.set_page_config(page_title="Éditeur EPW Robuste (Multi-Encodage)", layout="wide")
 
-st.title("🛡️ Éditeur EPW Robuste (Préservation du format)")
+st.title("🛡️ Éditeur EPW Robuste (Multi-Encodage)")
 st.markdown("""
-Cette application modifie une colonne spécifique d'un fichier **EPW** (au format CSV) 
-en utilisant des données sources **Excel**, même si l'ordre des lignes diffère.
-
-**Garanties de robustesse :**
-- Le fichier EPW est lu et écrit comme du **texte brut**.
-- Aucun formatage de nombre, d'espace ou de virgule n'est altéré par pandas.
-- Seule la colonne cible est modifiée, le reste du fichier (y compris les en-têtes éventuels) est conservé à l'identique.
-- Gestion intelligente de l'alignement par Date/Heure.
+Cette application modifie une colonne spécifique d'un fichier **EPW** en utilisant des données **Excel**.
+**Nouveauté :** Gestion automatique des problèmes d'encodage (UTF-8, Windows-1252, Latin-1) pour éviter les erreurs de lecture.
 """)
 
 # --- 1. Chargement des fichiers ---
@@ -27,154 +21,128 @@ with col2:
 
 if uploaded_epw and uploaded_excel:
     try:
-        # --- 2. Lecture du fichier Excel (Seul fichier chargé en DataFrame) ---
+        # --- 2. Lecture du fichier Excel ---
         df_excel = pd.read_excel(uploaded_excel)
         st.success("Fichier Excel chargé avec succès.")
         
-        # Affichage pour aider l'utilisateur à identifier les colonnes
         with st.expander("Aperçu des données Excel"):
             st.dataframe(df_excel.head())
-            st.write(f"Colonnes disponibles : {list(df_excel.columns)}")
 
-        # --- 3. Configuration de la fusion ---
-        st.subheader("3. Configuration de l'alignement et de la modification")
+        # --- 3. Configuration ---
+        st.subheader("3. Configuration de l'alignement")
         
         col_key, col_src, col_target = st.columns(3)
         
         with col_key:
             key_col_excel = st.selectbox("Colonne 'Clé' dans l'Excel (Date/Heure)", options=list(df_excel.columns))
-            # On demande à l'utilisateur le numéro ou le nom de la colonne dans l'EPW si connu, 
-            # mais comme on lit en texte, on va demander l'index de la colonne (0-based)
-            st.info("Dans un EPW standard : 0=Année, 1=Mois, 2=Jour, 3=Heure, 4=Minute, 6=Température...")
+            st.info("Assurez-vous que cette colonne contient des dates/heures compatibles avec l'EPW.")
         
         with col_src:
-            source_col_excel = st.selectbox("Colonne 'Valeur' dans l'Excel (Nouvelle donnée)", options=list(df_excel.columns))
+            source_col_excel = st.selectbox("Colonne 'Valeur' dans l'Excel", options=list(df_excel.columns))
             
         with col_target:
-            target_col_index = st.number_input("Index de la colonne à modifier dans l'EPW (0, 1, 2...)", min_value=0, value=6, step=1)
-            st.caption("L'index commence à 0. Ex: 6 pour la température sèche.")
+            target_col_index = st.number_input("Index de la colonne à modifier dans l'EPW (0-based)", min_value=0, value=6, step=1)
+            st.caption("0=Année, 1=Mois, ..., 6=Température (généralement).")
 
-        # Préparation de la table de recherche (Lookup Table)
-        # On crée un dictionnaire : { "2026-01-01 01:00": 23.5, ... }
-        # On normalise la clé en string pour éviter les problèmes de format
+        # Préparation du dictionnaire de recherche
         df_excel['_key_norm'] = df_excel[key_col_excel].astype(str)
         lookup_dict = pd.Series(df_excel[source_col_excel].values, index=df_excel['_key_norm']).to_dict()
-        
-        st.write(f"✅ {len(lookup_dict)} valeurs prêtes à être injectées depuis l'Excel.")
+        st.write(f"✅ {len(lookup_dict)} valeurs prêtes depuis l'Excel.")
 
         if st.button("🚀 Traiter et Générer le fichier"):
-            # Lecture du contenu EPW en texte brut
-            epw_content = uploaded_epw.read().decode('utf-8')
-            lines = epw_content.splitlines()
+            # --- 4. Lecture Robuste du fichier EPW (Gestion Encodage) ---
+            epw_raw_data = uploaded_epw.read()
+            epw_content = ""
+            detected_encoding = ""
             
+            encodings_to_try = ['utf-8', 'windows-1252', 'iso-8859-1', 'latin-1', 'cp1252']
+            
+            for enc in encodings_to_try:
+                try:
+                    epw_content = epw_raw_data.decode(enc)
+                    detected_encoding = enc
+                    st.success(f"Fichier EPW décodé avec succès en : **{enc}**")
+                    break
+                except UnicodeDecodeError:
+                    continue
+            
+            if not epw_content:
+                st.error("Impossible de lire le fichier EPW. L'encodage n'est reconnu ni en UTF-8, ni en Windows-1252/Latin-1.")
+                st.stop()
+
+            lines = epw_content.splitlines()
             new_lines = []
             count_modified = 0
             count_total = 0
             
-            # Barre de progression
             progress_bar = st.progress(0)
             status_text = st.empty()
             
-            # --- 4. Traitement Ligne par Ligne (Robuste) ---
+            # --- 5. Traitement Ligne par Ligne ---
             for i, line in enumerate(lines):
-                # On ignore les lignes vides
                 if not line.strip():
                     new_lines.append(line)
                     continue
                 
-                # On découpe la ligne pour analyser la structure
-                # On utilise csv.reader logic manuellement ou split simple si pas de guillemets complexes
-                # Pour un EPW standard, split(',') suffit souvent, mais attention aux guillemets.
-                # Approche sécurisée : utiliser le module csv sur une ligne
-                import csv
-                from io import StringIO
-                
-                reader = csv.reader(StringIO(line))
+                # Parsing CSV sécurisé
                 try:
+                    reader = csv.reader(io.StringIO(line))
                     row = next(reader)
-                except StopIteration:
-                    new_lines.append(line)
+                except Exception:
+                    new_lines.append(line) # Ligne non CSV, on garde
                     continue
 
-                # Si la ligne n'a pas assez de colonnes (ex: en-tête ou ligne corrompue), on la garde telle quelle
+                # Vérification longueur
                 if len(row) <= target_col_index:
                     new_lines.append(line)
                     continue
                 
-                # Construction de la clé de temps depuis les colonnes EPW standards
-                # Hypothèse : EPW standard (Year, Month, Day, Hour, Minute) aux index 0,1,2,3,4
-                # Si votre fichier est différent, il faudra adapter cette logique.
-                # On essaie de construire une clé similaire à celle de l'Excel.
-                # Exemple de clé standard : "2026-01-01 01:00" ou "2026,1,1,1,0"
-                # Pour être robuste, on va essayer de matcher le format exact de l'Excel si possible,
-                # ou construire un format standard.
-                
-                # Stratégie : On construit une clé "YYYY,M,D,H,M" (format brut EPW) et on espère que l'Excel est compatible
-                # OU on laisse l'utilisateur définir comment construire la clé ? 
-                # Pour simplifier l'UI, on suppose que la clé Excel est une date/heure lisible.
-                # On va construire une clé standardisée depuis l'EPW : "YYYY-MM-DD HH:MM"
-                
+                # Construction de la clé depuis l'EPW
                 try:
+                    # Hypothèse structure EPW standard: Y,M,D,H,Min
                     y, m, d, h, mi = row[0], row[1], row[2], row[3], row[4]
-                    # Normalisation pour matcher (ex: enlever les zéros non nécessaires si l'Excel le fait)
-                    # Le plus sûr est de créer plusieurs variantes de clés ou de demander le format à l'utilisateur.
-                    # Ici, on crée une clé simple : "Y,M,D,H,Mi"
-                    epw_key = f"{y},{m},{d},{h},{mi}"
                     
-                    # Tentative de correspondance directe
+                    # Clé 1: Format brut "Y,M,D,H,Mi"
+                    epw_key_raw = f"{y},{m},{d},{h},{mi}"
+                    
+                    # Clé 2: Format ISO "YYYY-MM-DD HH:MM" (pour matcher Excel propre)
+                    # On essaie de convertir en int pour nettoyer les zéros (ex: 01 -> 1) si nécessaire, 
+                    # mais on garde le format ISO pour la comparaison standardisée
+                    try:
+                        y_i, m_i, d_i, h_i, mi_i = int(y), int(m), int(d), int(h), int(mi)
+                        epw_key_iso = f"{y_i}-{m_i:02d}-{d_i:02d} {h_i:02d}:{mi_i:02d}"
+                    except ValueError:
+                        epw_key_iso = ""
+
                     new_val = None
-                    if epw_key in lookup_dict:
-                        new_val = lookup_dict[epw_key]
-                    else:
-                        # Essai avec un formatage différent (si l'Excel est "2026-01-01 01:00")
-                        # On essaie de formater comme une date ISO
-                        epw_key_iso = f"{y}-{int(m):02d}-{int(d):02d} {int(h):02d}:{int(mi):02d}"
-                        if epw_key_iso in lookup_dict:
-                            new_val = lookup_dict[epw_key_iso]
                     
+                    # Tentative de matching
+                    if epw_key_raw in lookup_dict:
+                        new_val = lookup_dict[epw_key_raw]
+                    elif epw_key_iso in lookup_dict:
+                        new_val = lookup_dict[epw_key_iso]
+                    else:
+                        # Essai avec une clé simple juste date (si l'heure est implicite ou format différent)
+                        # À adapter si nécessaire selon vos données spécifiques
+                        pass
+
                     if new_val is not None:
-                        # MODIFICATION ICI : On remplace uniquement la valeur dans la liste row
+                        # Remplacement de la valeur
                         row[target_col_index] = str(new_val)
                         
-                        # On reconstruit la ligne exactement comme un CSV standard
-                        # Cela préserve les guillemets si nécessaire grâce au module csv
+                        # Réécriture CSV propre
                         output = io.StringIO()
                         writer = csv.writer(output)
                         writer.writerow(row)
                         new_lines.append(output.getvalue().strip())
                         count_modified += 1
                     else:
-                        # Pas de correspondance, on garde la ligne originale
                         new_lines.append(line)
                         
-                except (ValueError, IndexError):
-                    # Erreur de parsing (ex: ligne d'en-tête non standard), on garde la ligne originale
+                except Exception:
+                    # Erreur inattendue sur une ligne, on la conserve telle quelle pour ne pas casser le fichier
                     new_lines.append(line)
                 
                 count_total += 1
                 if i % 1000 == 0:
-                    progress_bar.progress(min(i / len(lines), 1.0))
-                    status_text.text(f"Traitement : {i}/{len(lines)} lignes...")
-
-            progress_bar.progress(1.0)
-            status_text.text("Terminé !")
-            
-            st.success(f"Traitement terminé ! {count_modified} lignes modifiées sur {count_total} lignes de données.")
-            
-            # --- 5. Export ---
-            final_content = '\n'.join(new_lines)
-            
-            st.download_button(
-                label="📥 Télécharger le fichier EPW modifié",
-                data=final_content,
-                file_name="meteo_modifie.epw", # On garde l'extension .epw ou .csv selon préférence
-                mime="text/csv"
-            )
-            
-            st.info("Le fichier généré conserve exactement le formatage original (espaces, guillemets, précision) pour toutes les colonnes non modifiées.")
-
-    except Exception as e:
-        st.error(f"Une erreur critique est survenue : {e}")
-        st.code(str(e))
-else:
-    st.info("Veuillez charger les deux fichiers pour commencer.")
+                    progress_bar.progress(min(i /
