@@ -3,12 +3,12 @@ import pandas as pd
 import io
 import csv
 
-st.set_page_config(page_title="Éditeur EPW - Intelligent", layout="wide")
+st.set_page_config(page_title="Éditeur EPW - Multi-Colonnes", layout="wide")
 
-st.title("🎯 Éditeur EPW Intelligent (Par Nom de Colonne)")
+st.title("🎛️ Éditeur EPW Multi-Colonnes")
 st.markdown("""
-Ce code détecte automatiquement la ligne d'en-tête de votre EPW (celle contenant 'Date', 'Dry Bulb...', etc.).
-Il identifie la colonne à modifier par son **nom** plutôt que par son index, éliminant tout risque d'erreur.
+Injectez simultanément plusieurs variables (Température, Humidité, Vent, etc.) depuis votre Excel vers l'EPW.
+Le code détecte l'en-tête de l'EPW et vous laisse mapper les colonnes Excel vers les colonnes EPW cibles.
 """)
 
 col1, col2 = st.columns(2)
@@ -21,10 +21,20 @@ if uploaded_epw and uploaded_excel:
     try:
         # --- 1. Traitement Excel ---
         df_excel = pd.read_excel(uploaded_excel)
-        source_col = st.selectbox("Colonne Excel contenant les valeurs", options=list(df_excel.columns))
-        list_values = df_excel[source_col].tolist()
-        total_excel_rows = len(list_values)
-        st.info(f"📊 **{total_excel_rows}** valeurs prêtes dans l'Excel.")
+        all_excel_cols = list(df_excel.columns)
+        
+        st.success(f"Excel chargé : {len(df_excel)} lignes de données.")
+        
+        # Sélection MULTIPLE des colonnes sources
+        selected_excel_cols = st.multiselect(
+            "Sélectionnez les colonnes de l'Excel à injecter (maintenez Ctrl/Cmd pour en choisir plusieurs)",
+            options=all_excel_cols,
+            default=[c for c in all_excel_cols if 'Temp' in c or 'Hum' in c] # Suggestions par défaut
+        )
+
+        if not selected_excel_cols:
+            st.warning("Veuillez sélectionner au moins une colonne dans l'Excel.")
+            st.stop()
 
         # --- 2. Lecture et Analyse EPW ---
         epw_raw = uploaded_epw.read()
@@ -45,45 +55,60 @@ if uploaded_epw and uploaded_excel:
 
         lines = epw_text.splitlines()
         
-        # Recherche de la ligne d'en-tête spécifique
+        # Recherche de la ligne d'en-tête
         header_line_index = -1
         header_columns = []
-        
-        # Mots clés typiques de votre en-tête
-        keywords = ["Date", "Dry Bulb", "Dew Point", "Relative Humidity", "Atmospheric Pressure"]
+        keywords = ["Date", "Dry Bulb", "Dew Point", "Relative Humidity", "Pressure", "Wind"]
         
         for i, line in enumerate(lines):
-            # On cherche une ligne qui contient plusieurs de ces mots clés
             match_count = sum(1 for k in keywords if k in line)
-            if match_count >= 3: # Si on trouve au moins 3 mots clés, c'est la bonne ligne
+            if match_count >= 2:
                 header_line_index = i
-                # Parsing de cette ligne pour récupérer les noms de colonnes
                 reader = csv.reader(io.StringIO(line))
                 header_columns = next(reader)
                 break
         
         if header_line_index == -1:
-            st.error("Impossible de trouver la ligne d'en-tête descriptive dans le fichier EPW.")
-            st.write("Assurez-vous que la ligne contenant 'Date,HH:MM,Dry Bulb...' est bien présente.")
+            st.error("Impossible de trouver la ligne d'en-tête descriptive.")
             st.stop()
         
-        st.success(f"✅ En-tête détecté à la ligne {header_line_index + 1}.")
-        st.write("Colonnes disponibles dans l'EPW :")
-        st.json(header_columns) # Affiche la liste proprement
+        st.success(f"✅ En-tête EPW détecté ({len(header_columns)} colonnes).")
 
-        # --- 3. Sélection de la colonne cible ---
-        target_col_name = st.selectbox(
-            "Quelle colonne de l'EPW voulez-vous remplacer ?",
-            options=header_columns,
-            index=header_columns.index("Dry Bulb Temperature {C}") if "Dry Bulb Temperature {C}" in header_columns else 0
-        )
+        # --- 3. Configuration du Mapping (Le cœur de la fonctionnalité) ---
+        st.subheader("3. Correspondance des colonnes (Mapping)")
+        st.write("Associez chaque colonne Excel sélectionnée à sa colonne cible dans l'EPW.")
         
-        target_col_index = header_columns.index(target_col_name)
-        st.info(f"La colonne '{target_col_name}' est l'index **{target_col_index}**.")
+        mapping_config = {}
+        cols_config = st.columns(1) # Une colonne verticale pour la liste
+        
+        for i, col_excel in enumerate(selected_excel_cols):
+            # Création d'une ligne par colonne sélectionnée
+            with st.container():
+                c1, c2 = st.columns([1, 2])
+                with c1:
+                    st.write(f"**Source (Excel):** `{col_excel}`")
+                with c2:
+                    # Menu déroulant pour choisir la cible EPW
+                    # On pré-sélectionne une colonne similaire si le nom correspond partiellement
+                    default_idx = 0
+                    for idx, h_col in enumerate(header_columns):
+                        # Heuristique simple : si le nom de l'Excel contient une partie du nom EPW
+                        if any(word in h_col for word in col_excel.split()):
+                            default_idx = idx
+                            break
+                    
+                    target = st.selectbox(
+                        f"➡️ Remplacer dans l'EPW :",
+                        options=header_columns,
+                        index=default_idx,
+                        key=f"map_{i}"
+                    )
+                    mapping_config[col_excel] = target
 
-        # --- 4. Identification des lignes de données ---
-        # On considère comme "données" toutes les lignes APRÈS la ligne d'en-tête
-        # qui ont un format CSV valide.
+        st.divider()
+
+        # --- 4. Vérification et Lancement ---
+        # Identification des lignes de données (après l'en-tête)
         data_lines_indices = []
         for i in range(header_line_index + 1, len(lines)):
             line = lines[i]
@@ -92,66 +117,75 @@ if uploaded_epw and uploaded_excel:
             try:
                 reader = csv.reader(io.StringIO(line))
                 row = next(reader)
-                if len(row) >= len(header_columns): # Doit avoir au moins autant de colonnes que l'en-tête
+                if len(row) >= len(header_columns):
                     data_lines_indices.append(i)
             except:
                 continue
         
-        total_epw_data_rows = len(data_lines_indices)
-        st.info(f"📊 **{total_epw_data_rows}** lignes de données trouvées après l'en-tête.")
+        total_epw_rows = len(data_lines_indices)
+        total_excel_rows = len(df_excel)
+        
+        st.info(f"📊 Données : Excel ({total_excel_rows} lignes) vs EPW ({total_epw_rows} lignes de données).")
+        
+        if total_excel_rows != total_epw_rows:
+            st.warning(f"⚠️ Les nombres de lignes diffèrent. Le traitement s'arrêtera à {min(total_excel_rows, total_epw_rows)} lignes.")
 
-        if total_excel_rows != total_epw_data_rows:
-            st.warning(f"⚠️ Écart de lignes : Excel ({total_excel_rows}) vs EPW ({total_epw_data_rows}). "
-                       f"Le traitement s'arrêtera au plus petit nombre.")
-
-        # --- 5. Traitement ---
-        if st.button("🚀 Injecter les données"):
+        if st.button("🚀 Injecter toutes les colonnes sélectionnées"):
+            limit = min(total_excel_rows, total_epw_rows)
             new_lines = lines[:]
             count_mod = 0
-            limit = min(total_excel_rows, total_epw_data_rows)
-            
             progress = st.progress(0)
             
+            # Pré-calcul des index cibles pour gagner du temps dans la boucle
+            # mapping_indices = { col_excel : index_epw }
+            mapping_indices = {}
+            for col_excel, col_epw_name in mapping_config.items():
+                idx = header_columns.index(col_epw_name)
+                mapping_indices[col_excel] = idx
+
             for i in range(limit):
                 line_idx = data_lines_indices[i]
-                new_val = list_values[i]
-                
-                if pd.isna(new_val):
-                    continue
-                
                 try:
                     reader = csv.reader(io.StringIO(lines[line_idx]))
                     row = next(reader)
                     
-                    # Injection
-                    if target_col_index < len(row):
-                        row[target_col_index] = str(new_val)
+                    modified = False
+                    # Injection de TOUTES les colonnes mappées pour cette ligne
+                    for col_excel, target_idx in mapping_indices.items():
+                        val = df_excel.at[i, col_excel]
                         
+                        if not pd.isna(val):
+                            if target_idx < len(row):
+                                row[target_idx] = str(val)
+                                modified = True
+                    
+                    if modified:
                         out = io.StringIO()
                         w = csv.writer(out)
                         w.writerow(row)
                         new_lines[line_idx] = out.getvalue().strip()
                         count_mod += 1
-                except:
+                        
+                except Exception:
                     continue
                 
                 if i % 500 == 0:
                     progress.progress(i / limit)
             
             progress.progress(1.0)
-            st.success(f"✅ Terminé ! **{count_mod}** valeurs injectées dans la colonne '{target_col_name}'.")
+            st.success(f"✅ Terminé ! **{count_mod}** lignes mises à jour avec {len(mapping_config)} colonnes.")
             
             final_content = '\n'.join(new_lines)
             
             st.download_button(
-                label="📥 Télécharger le fichier EPW modifié",
+                label="📥 Télécharger le fichier EPW complet",
                 data=final_content.encode('utf-8'),
-                file_name=f"epw_modifie_{target_col_name.replace(' ', '_')}.epw",
+                file_name="epw_modifie_multi.epw",
                 mime="text/csv"
             )
 
     except Exception as e:
-        st.error(f"Erreur : {e}")
+        st.error(f"Erreur critique : {e}")
         st.code(str(e))
 else:
-    st.info("En attente des fichiers...")
+    st.info("Veuillez charger les fichiers EPW et Excel.")
