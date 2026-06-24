@@ -2,13 +2,18 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
-def lire_fichier_excel(fichier, feuille=0):
-    """Lire un fichier Excel et retourner un DataFrame."""
-    return pd.read_excel(fichier, sheet_name=feuille, engine='openpyxl')
+def lire_fichier(fichier):
+    """Lire un fichier (Excel ou CSV) et retourner un DataFrame."""
+    if fichier.name.endswith(('.xlsx', '.xls')):
+        return pd.read_excel(fichier, engine='openpyxl')
+    elif fichier.name.endswith('.csv'):
+        return pd.read_csv(fichier, sep=',', decimal='.')
+    else:
+        raise ValueError("Format de fichier non supporté. Utilisez .xlsx, .xls ou .csv.")
 
 def exporter_vers_epw(df_source, df_dest, nd_donnees=8760):
     """
-    Adapter les données du fichier TRACC vers le format EPW.
+    Adapter les données du fichier TRACC (Excel) vers le format EPW (CSV).
     df_source : DataFrame du fichier source (TRACC).
     df_dest : DataFrame du fichier destination (EPW).
     nd_donnees : Nombre de lignes de données (8760 par défaut).
@@ -30,15 +35,15 @@ def exporter_vers_epw(df_source, df_dest, nd_donnees=8760):
         'RayDirectN': 21,      # Colonne 22 en VBA (index 21 en Python)
         'RayDiffusH': 18,      # Colonne 19 en VBA (index 18 en Python)
         'Nebulosite': 30,      # Colonne 31 en VBA (index 30 en Python)
-        'PressionATM': 12,    # Colonne 13 en VBA (index 12 en Python)
+        'PressionATM': 12,     # Colonne 13 en VBA (index 12 en Python)
     }
 
     # Configuration des colonnes destination (EPW)
     config_dest = {
-        'TempAir': 3,          # Colonne 4 en VBA (index 3 en Python)
-        'TempRosee': 4,        # Colonne 5 en VBA (index 4 en Python)
-        'HR': 5,               # Colonne 6 en VBA (index 5 en Python)
-        'PressionATM': 6,      # Colonne 7 en VBA (index 6 en Python)
+        'TempAir': 3,               # Colonne 4 en EPW (index 3)
+        'TempRosee': 4,             # Colonne 5 en EPW (index 4)
+        'HR': 5,                    # Colonne 6 en EPW (index 5)
+        'PressionATM': 6,           # Colonne 7 en EPW (index 6)
         'RayExtraterrestreH': 7,
         'RayExtraterrestreDirectN': 8,
         'RayIRciel': 9,
@@ -69,7 +74,7 @@ def exporter_vers_epw(df_source, df_dest, nd_donnees=8760):
     # Lignes de départ et fin
     ls_depart = 26  # Ligne 27 en VBA (index 26 en Python)
     ls_fin = ls_depart + nd_donnees - 1
-    ld_depart = 19  # Ligne 20 en VBA (index 19 en Python)
+    ld_depart = 19  # Ligne 20 en EPW (index 19 en Python)
     ld_fin = ld_depart + nd_donnees - 1
 
     # Copier les données de la source vers la destination
@@ -124,11 +129,10 @@ def formater_dates(df, col_date=0, ld_depart=19, ld_fin=None):
     for i in range(ld_depart, ld_fin + 1):
         if pd.notna(df.iloc[i, col_date]):
             date = df.iloc[i, col_date]
-            if isinstance(date, datetime):
+            if isinstance(date, (datetime, pd.Timestamp)):
                 df.iloc[i, col_date] = date.strftime("%Y/%m/%d")
     return df
 
 def exporter_en_csv(df, nom_fichier):
     """Exporter un DataFrame en CSV avec des séparateurs US."""
-    df.to_csv(nom_fichier, index=False, sep=',', decimal='.')
-    return nom_fichier
+    return df.to_csv(nom_fichier, index=False, sep=',', decimal='.')
