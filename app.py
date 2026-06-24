@@ -3,172 +3,155 @@ import pandas as pd
 import io
 import csv
 
-st.set_page_config(page_title="Éditeur EPW Robuste (Multi-Encodage)", layout="wide")
+st.set_page_config(page_title="Éditeur EPW - Intelligent", layout="wide")
 
-st.title("🛡️ Éditeur EPW Robuste (Multi-Encodage)")
+st.title("🎯 Éditeur EPW Intelligent (Par Nom de Colonne)")
 st.markdown("""
-Cette application modifie une colonne spécifique d'un fichier **EPW** en utilisant des données **Excel**.
-**Nouveauté :** Gestion automatique des problèmes d'encodage (UTF-8, Windows-1252, Latin-1).
+Ce code détecte automatiquement la ligne d'en-tête de votre EPW (celle contenant 'Date', 'Dry Bulb...', etc.).
+Il identifie la colonne à modifier par son **nom** plutôt que par son index, éliminant tout risque d'erreur.
 """)
 
-# --- 1. Chargement des fichiers ---
 col1, col2 = st.columns(2)
-
 with col1:
-    uploaded_epw = st.file_uploader("1. Fichier EPW (CSV complet)", type=["csv", "txt", "epw"])
+    uploaded_epw = st.file_uploader("1. Fichier EPW", type=["csv", "txt", "epw"])
 with col2:
-    uploaded_excel = st.file_uploader("2. Fichier Excel (Sources)", type=["xlsx", "xls"])
+    uploaded_excel = st.file_uploader("2. Fichier Excel", type=["xlsx", "xls"])
 
 if uploaded_epw and uploaded_excel:
     try:
-        # --- 2. Lecture du fichier Excel ---
+        # --- 1. Traitement Excel ---
         df_excel = pd.read_excel(uploaded_excel)
-        st.success("Fichier Excel chargé avec succès.")
-        
-        with st.expander("Aperçu des données Excel"):
-            st.dataframe(df_excel.head())
+        source_col = st.selectbox("Colonne Excel contenant les valeurs", options=list(df_excel.columns))
+        list_values = df_excel[source_col].tolist()
+        total_excel_rows = len(list_values)
+        st.info(f"📊 **{total_excel_rows}** valeurs prêtes dans l'Excel.")
 
-        # --- 3. Configuration ---
-        st.subheader("3. Configuration de l'alignement")
+        # --- 2. Lecture et Analyse EPW ---
+        epw_raw = uploaded_epw.read()
+        epw_text = ""
+        detected_enc = ""
         
-        col_key, col_src, col_target = st.columns(3)
+        for enc in ['utf-8', 'windows-1252', 'iso-8859-1', 'latin-1', 'cp1252']:
+            try:
+                epw_text = epw_raw.decode(enc)
+                detected_enc = enc
+                break
+            except UnicodeDecodeError:
+                continue
         
-        with col_key:
-            key_col_excel = st.selectbox("Colonne 'Clé' dans l'Excel (Date/Heure)", options=list(df_excel.columns))
-            st.info("Assurez-vous que cette colonne contient des dates/heures compatibles avec l'EPW.")
+        if not epw_text:
+            st.error("Échec de lecture (Encodage inconnu).")
+            st.stop()
+
+        lines = epw_text.splitlines()
         
-        with col_src:
-            source_col_excel = st.selectbox("Colonne 'Valeur' dans l'Excel", options=list(df_excel.columns))
-            
-        with col_target:
-            target_col_index = st.number_input("Index de la colonne à modifier dans l'EPW (0-based)", min_value=0, value=6, step=1)
-            st.caption("0=Année, 1=Mois, ..., 6=Température (généralement).")
+        # Recherche de la ligne d'en-tête spécifique
+        header_line_index = -1
+        header_columns = []
+        
+        # Mots clés typiques de votre en-tête
+        keywords = ["Date", "Dry Bulb", "Dew Point", "Relative Humidity", "Atmospheric Pressure"]
+        
+        for i, line in enumerate(lines):
+            # On cherche une ligne qui contient plusieurs de ces mots clés
+            match_count = sum(1 for k in keywords if k in line)
+            if match_count >= 3: # Si on trouve au moins 3 mots clés, c'est la bonne ligne
+                header_line_index = i
+                # Parsing de cette ligne pour récupérer les noms de colonnes
+                reader = csv.reader(io.StringIO(line))
+                header_columns = next(reader)
+                break
+        
+        if header_line_index == -1:
+            st.error("Impossible de trouver la ligne d'en-tête descriptive dans le fichier EPW.")
+            st.write("Assurez-vous que la ligne contenant 'Date,HH:MM,Dry Bulb...' est bien présente.")
+            st.stop()
+        
+        st.success(f"✅ En-tête détecté à la ligne {header_line_index + 1}.")
+        st.write("Colonnes disponibles dans l'EPW :")
+        st.json(header_columns) # Affiche la liste proprement
 
-        # Préparation du dictionnaire de recherche
-        # On s'assure que la clé est bien une chaîne de caractères
-        df_excel['_key_norm'] = df_excel[key_col_excel].astype(str)
-        lookup_dict = pd.Series(df_excel[source_col_excel].values, index=df_excel['_key_norm']).to_dict()
-        st.write(f"✅ {len(lookup_dict)} valeurs prêtes depuis l'Excel.")
+        # --- 3. Sélection de la colonne cible ---
+        target_col_name = st.selectbox(
+            "Quelle colonne de l'EPW voulez-vous remplacer ?",
+            options=header_columns,
+            index=header_columns.index("Dry Bulb Temperature {C}") if "Dry Bulb Temperature {C}" in header_columns else 0
+        )
+        
+        target_col_index = header_columns.index(target_col_name)
+        st.info(f"La colonne '{target_col_name}' est l'index **{target_col_index}**.")
 
-        if st.button("🚀 Traiter et Générer le fichier"):
-            # --- 4. Lecture Robuste du fichier EPW (Gestion Encodage) ---
-            epw_raw_data = uploaded_epw.read()
-            epw_content = ""
-            detected_encoding = ""
-            
-            encodings_to_try = ['utf-8', 'windows-1252', 'iso-8859-1', 'latin-1', 'cp1252']
-            
-            for enc in encodings_to_try:
-                try:
-                    epw_content = epw_raw_data.decode(enc)
-                    detected_encoding = enc
-                    st.success(f"Fichier EPW décodé avec succès en : **{enc}**")
-                    break
-                except UnicodeDecodeError:
-                    continue
-            
-            if not epw_content:
-                st.error("Impossible de lire le fichier EPW. L'encodage n'est reconnu ni en UTF-8, ni en Windows-1252/Latin-1.")
-                st.stop()
+        # --- 4. Identification des lignes de données ---
+        # On considère comme "données" toutes les lignes APRÈS la ligne d'en-tête
+        # qui ont un format CSV valide.
+        data_lines_indices = []
+        for i in range(header_line_index + 1, len(lines)):
+            line = lines[i]
+            if not line.strip():
+                continue
+            try:
+                reader = csv.reader(io.StringIO(line))
+                row = next(reader)
+                if len(row) >= len(header_columns): # Doit avoir au moins autant de colonnes que l'en-tête
+                    data_lines_indices.append(i)
+            except:
+                continue
+        
+        total_epw_data_rows = len(data_lines_indices)
+        st.info(f"📊 **{total_epw_data_rows}** lignes de données trouvées après l'en-tête.")
 
-            lines = epw_content.splitlines()
-            new_lines = []
-            count_modified = 0
-            count_total = 0
+        if total_excel_rows != total_epw_data_rows:
+            st.warning(f"⚠️ Écart de lignes : Excel ({total_excel_rows}) vs EPW ({total_epw_data_rows}). "
+                       f"Le traitement s'arrêtera au plus petit nombre.")
+
+        # --- 5. Traitement ---
+        if st.button("🚀 Injecter les données"):
+            new_lines = lines[:]
+            count_mod = 0
+            limit = min(total_excel_rows, total_epw_data_rows)
             
-            progress_bar = st.progress(0)
-            status_text = st.empty()
+            progress = st.progress(0)
             
-            # --- 5. Traitement Ligne par Ligne ---
-            total_lines = len(lines)
-            
-            for i, line in enumerate(lines):
-                if not line.strip():
-                    new_lines.append(line)
+            for i in range(limit):
+                line_idx = data_lines_indices[i]
+                new_val = list_values[i]
+                
+                if pd.isna(new_val):
                     continue
                 
-                # Parsing CSV sécurisé
                 try:
-                    reader = csv.reader(io.StringIO(line))
+                    reader = csv.reader(io.StringIO(lines[line_idx]))
                     row = next(reader)
-                except Exception:
-                    new_lines.append(line) # Ligne non CSV, on garde
-                    continue
-
-                # Vérification longueur
-                if len(row) <= target_col_index:
-                    new_lines.append(line)
-                    continue
-                
-                # Construction de la clé depuis l'EPW
-                try:
-                    # Hypothèse structure EPW standard: Y,M,D,H,Min
-                    y, m, d, h, mi = row[0], row[1], row[2], row[3], row[4]
                     
-                    # Clé 1: Format brut "Y,M,D,H,Mi"
-                    epw_key_raw = f"{y},{m},{d},{h},{mi}"
-                    
-                    # Clé 2: Format ISO "YYYY-MM-DD HH:MM"
-                    try:
-                        y_i, m_i, d_i, h_i, mi_i = int(y), int(m), int(d), int(h), int(mi)
-                        epw_key_iso = f"{y_i}-{m_i:02d}-{d_i:02d} {h_i:02d}:{mi_i:02d}"
-                    except ValueError:
-                        epw_key_iso = ""
-
-                    new_val = None
-                    
-                    # Tentative de matching
-                    if epw_key_raw in lookup_dict:
-                        new_val = lookup_dict[epw_key_raw]
-                    elif epw_key_iso in lookup_dict:
-                        new_val = lookup_dict[epw_key_iso]
-
-                    if new_val is not None:
-                        # Remplacement de la valeur
+                    # Injection
+                    if target_col_index < len(row):
                         row[target_col_index] = str(new_val)
                         
-                        # Réécriture CSV propre
-                        output = io.StringIO()
-                        writer = csv.writer(output)
-                        writer.writerow(row)
-                        new_lines.append(output.getvalue().strip())
-                        count_modified += 1
-                    else:
-                        new_lines.append(line)
-                        
-                except Exception:
-                    # Erreur inattendue sur une ligne, on la conserve telle quelle
-                    new_lines.append(line)
+                        out = io.StringIO()
+                        w = csv.writer(out)
+                        w.writerow(row)
+                        new_lines[line_idx] = out.getvalue().strip()
+                        count_mod += 1
+                except:
+                    continue
                 
-                count_total += 1
-                
-                # Mise à jour de la barre de progression (toutes les 500 lignes pour performance)
                 if i % 500 == 0:
-                    progress_val = min((i / total_lines), 1.0)
-                    progress_bar.progress(progress_val)
-                    status_text.text(f"Traitement : {i}/{total_lines} lignes...")
-
-            progress_bar.progress(1.0)
-            status_text.text("Terminé !")
+                    progress.progress(i / limit)
             
-            st.success(f"Traitement terminé ! **{count_modified}** lignes modifiées sur {count_total} lignes totales.")
+            progress.progress(1.0)
+            st.success(f"✅ Terminé ! **{count_mod}** valeurs injectées dans la colonne '{target_col_name}'.")
             
-            if count_modified == 0:
-                st.warning("Aucune modification n'a été effectuée. Vérifiez que les formats de dates/heures dans la colonne 'Clé' de l'Excel correspondent bien à ceux de l'EPW.")
-
-            # --- 6. Export ---
             final_content = '\n'.join(new_lines)
             
             st.download_button(
                 label="📥 Télécharger le fichier EPW modifié",
                 data=final_content.encode('utf-8'),
-                file_name="meteo_modifie.epw",
+                file_name=f"epw_modifie_{target_col_name.replace(' ', '_')}.epw",
                 mime="text/csv"
             )
-            st.info("Le fichier téléchargé est encodé en UTF-8.")
 
     except Exception as e:
-        st.error(f"Une erreur critique est survenue : {e}")
+        st.error(f"Erreur : {e}")
         st.code(str(e))
 else:
-    st.info("Veuillez charger les deux fichiers pour commencer.")
+    st.info("En attente des fichiers...")
