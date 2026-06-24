@@ -39,6 +39,14 @@ if fichier_source:
         try:
             df_dest = lire_fichier(fichier_dest)
             st.success("Fichier EPW chargé avec succès !")
+            
+            # --- AJOUTEZ CECI POUR DEBUGGER ---
+            st.warning(f"🔍 Diagnostic : Le fichier a {df_dest.shape[0]} lignes et {df_dest.shape[1]} colonnes détectées par Python.")
+            st.write("Aperçu des 2 premières lignes brutes :")
+            st.write(df_dest.head(2))
+            st.write("Nom des colonnes détectées :")
+            st.write(list(df_dest.columns))
+            # ----------------------------------
 
             # Bouton pour lancer l'export
             if st.button("Exporter les données"):
