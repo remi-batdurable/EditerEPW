@@ -18,6 +18,20 @@ def lire_fichier(fichier):
         raise ValueError("Format de fichier non supporté. Utilisez .xlsx, .xls ou .csv.")
 
 def exporter_vers_epw(df_source, df_dest, nd_donnees=8760):
+    # Vérifier que les DataFrames ont assez de lignes
+    if len(df_source) < ls_depart + nd_donnees:
+        raise ValueError(f"Le fichier source n'a pas assez de lignes. Attendu : {ls_depart + nd_donnees}, trouvé : {len(df_source)}")
+    if len(df_dest) < ld_depart + nd_donnees:
+        raise ValueError(f"Le fichier destination n'a pas assez de lignes. Attendu : {ld_depart + nd_donnees}, trouvé : {len(df_dest)}")
+
+    # Vérifier que les DataFrames ont assez de colonnes
+    max_col_source = max(config_source.values())
+    max_col_dest = max(config_dest.values())
+    if df_source.shape[1] <= max_col_source:
+        raise ValueError(f"Le fichier source n'a pas assez de colonnes. Attendu : {max_col_source + 1}, trouvé : {df_source.shape[1]}")
+    if df_dest.shape[1] <= max_col_dest:
+        raise ValueError(f"Le fichier destination n'a pas assez de colonnes. Attendu : {max_col_dest + 1}, trouvé : {df_dest.shape[1]}")
+
     """
     Adapter les données du fichier TRACC vers le format EPW.
     df_source : DataFrame du fichier source (TRACC).
@@ -75,7 +89,7 @@ def exporter_vers_epw(df_source, df_dest, nd_donnees=8760):
     }
 
     # Lignes de départ et fin
-    ls_depart = 26  # Ligne 27 en Excel (index 26 en Python)
+    ls_depart = 1  
     ld_depart = 19  # Ligne 20 en EPW (index 19 en Python)
 
     # Calculer nd_donnees dynamiquement
