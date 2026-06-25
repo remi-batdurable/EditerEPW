@@ -180,7 +180,7 @@ if uploaded_epw and uploaded_excel:
             st.download_button(
                 label="📥 Télécharger le fichier EPW complet",
                 data=final_content.encode('utf-8'),
-                file_name="epw_modifie_multi.epw",
+                file_name="epw_modifie_multi.csv",
                 mime="text/csv"
             )
 
