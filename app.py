@@ -80,25 +80,28 @@ if uploaded_epw and uploaded_excel:
         mapping_config = {}
         for i, col_excel in enumerate(selected_excel_cols):
             with st.container():
-                c1, c2, c3 = st.columns([1, 2, 1])
+                c1, c2, c3 = st.columns([1, 2, 0.5])
                 with c1:
                     st.write(f"**Source (Excel):** `{col_excel}`")
                 with c2:
-                    default_idx = 0
+                    # Recherche d'une correspondance exacte dans header_columns
+                    default_idx = None
                     for idx, h_col in enumerate(header_columns):
-                        if col_excel in h_col:
+                        if col_excel.strip() == h_col.strip():
                             default_idx = idx
                             break
 
                     target = st.selectbox(
                         f"➡️ Remplacer dans l'EPW :",
                         options=header_columns,
-                        index=default_idx,
+                        index=default_idx if default_idx is not None else 0,
                         key=f"map_{i}"
                     )
                     mapping_config[col_excel] = target
                 with c3:
-                    st.info(f"Colonne EPW : **{target}**")
+                    # Affichage discret du numéro de colonne EPW
+                    target_idx = header_columns.index(target) if target in header_columns else -1
+                    st.text(f"#{target_idx}")
 
         st.divider()
 
