@@ -1,0 +1,39 @@
+# --- Fichiers de données brutes ou générées par DesignBuilder/EnergyPlus ---
+*.epw
+*.csv
+*.idd
+*.sql
+*.rdd
+*.html  # Rapports générés par DesignBuilder
+*.xlsx  # Résultats exportés
+*.xml   # Fichiers de configuration ou résultats
+
+# --- Fichiers temporaires, logs, ou caches ---
+*.log
+*.tmp
+*.bak
+*.swp
+.DS_Store
+Thumbs.db
+*.swo
+
+# --- Dossiers à ignorer (résultats, données brutes, temporaires) ---
+/results/
+/temp/
+/data/raw/
+/output/
+/__pycache__/
+
+# --- Fichiers de configuration sensibles (clés, licences, etc.) ---
+.env
+*.ini
+*.cfg
+*_credentials*
+*secret*
+*license*
+
+# --- Exceptions : fichiers à versionner ---
+!.gitignore
+!README.md
+!/scripts/  # Si vous avez des scripts Python/Bash à partager
+!/docs/     # Documentation du projet
