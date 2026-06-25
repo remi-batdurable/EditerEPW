@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import io
 import csv
+import os
 
 st.set_page_config(page_title="Éditeur EPW - Multi-Colonnes", layout="wide")
 
@@ -164,10 +165,15 @@ if uploaded_epw and uploaded_excel:
 
             final_content = '\n'.join(new_lines)
 
+            # Génération du nom de fichier de sortie
+            epw_filename = uploaded_epw.name
+            name_without_ext, ext = os.path.splitext(epw_filename)
+            output_filename = f"{name_without_ext} modifié{ext}"
+
             st.download_button(
-                label="📥 Télécharger le fichier EPW complet",
+                label="📥 Télécharger le fichier EPW modifié",
                 data=final_content.encode('utf-8'),
-                file_name="epw_modifie_multi.csv",
+                file_name=output_filename,
                 mime="text/csv"
             )
 
