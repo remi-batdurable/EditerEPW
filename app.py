@@ -73,12 +73,6 @@ if uploaded_epw and uploaded_excel:
 
         st.success(f"✅ En-tête EPW détecté ({len(header_columns)} colonnes).")
 
-        # Affichage des colonnes EPW disponibles pour vérification
-        st.subheader("📋 Colonnes disponibles dans le fichier EPW")
-        st.write("Voici les colonnes détectées dans votre fichier EPW :")
-        for idx, col in enumerate(header_columns):
-            st.write(f"- **{idx}**: {col}")
-
         # --- 3. Configuration du Mapping ---
         st.subheader("3. Correspondance des colonnes (Mapping)")
         st.write("Associez chaque colonne Excel sélectionnée à sa colonne cible dans l'EPW.")
@@ -86,7 +80,7 @@ if uploaded_epw and uploaded_excel:
         mapping_config = {}
         for i, col_excel in enumerate(selected_excel_cols):
             with st.container():
-                c1, c2 = st.columns([1, 2])
+                c1, c2, c3 = st.columns([1, 2, 1])
                 with c1:
                     st.write(f"**Source (Excel):** `{col_excel}`")
                 with c2:
@@ -103,16 +97,8 @@ if uploaded_epw and uploaded_excel:
                         key=f"map_{i}"
                     )
                     mapping_config[col_excel] = target
-
-        # Affichage du récapitulatif des colonnes EPW qui seront modifiées
-        st.subheader("🔍 Récapitulatif des colonnes EPW à modifier")
-        modified_epw_columns = set(mapping_config.values())
-        if modified_epw_columns:
-            st.write("Les colonnes suivantes dans le fichier EPW seront modifiées :")
-            for col in sorted(modified_epw_columns):
-                st.write(f"- ✅ **{col}**")
-        else:
-            st.warning("Aucune colonne EPW n'est sélectionnée pour modification.")
+                with c3:
+                    st.info(f"Colonne EPW : **{target}**")
 
         st.divider()
 
