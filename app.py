@@ -10,7 +10,8 @@ st.title("🎛️ Éditeur EPW Multi-Colonnes")
 st.markdown("""
 Injectez simultanément plusieurs variables (Température, Humidité, Vent, etc.) depuis votre Excel vers un EPW au format CSV.  
 Le code détecte l'en-tête de l'EPW et vous laisse mapper les colonnes Excel vers les colonnes EPW cibles. Si les colonnes Excel sont nommées comme les colonnes EPW cibles, le mappage est automatique.  
-Le fichier Excel doit contenir en première ligne l'entête et les 8760 valeurs de chaque donnée à partir de la ligne 2.   
+Le fichier Excel doit contenir en première ligne l'entête et les 8760 valeurs de chaque donnée à partir de la ligne 2.  
+La première colonne du fichier Excel peut etre une colonne de date (Entête = Date). Elle est exclue du mapping. 
 Le fichier de sortie est un fichier EPW au format csv à télécharger avec les données choisies remplacées.
 """)
 
