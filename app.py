@@ -26,11 +26,11 @@ if uploaded_epw and uploaded_excel:
 
         st.success(f"Excel chargé : {len(df_excel)} lignes de données.")
 
-        # Sélection MULTIPLE des colonnes sources
+        # Sélection MULTIPLE des colonnes sources (toutes sélectionnées par défaut sauf Date)
         selected_excel_cols = st.multiselect(
-            "Sélectionnez les colonnes de l'Excel à injecter (maintenez Ctrl/Cmd pour en choisir plusieurs)",
+            "Sélectionnez les colonnes de l'Excel à injecter (toutes sont sélectionnées par défaut sauf 'Date')",
             options=all_excel_cols,
-            default=all_excel_cols
+            default=all_excel_cols  # Toutes les colonnes sauf Date sont sélectionnées par défaut
         )
 
         if not selected_excel_cols:
@@ -73,6 +73,12 @@ if uploaded_epw and uploaded_excel:
 
         st.success(f"✅ En-tête EPW détecté ({len(header_columns)} colonnes).")
 
+        # Affichage des colonnes EPW disponibles pour vérification
+        st.subheader("📋 Colonnes disponibles dans le fichier EPW")
+        st.write("Voici les colonnes détectées dans votre fichier EPW :")
+        for idx, col in enumerate(header_columns):
+            st.write(f"- **{idx}**: {col}")
+
         # --- 3. Configuration du Mapping ---
         st.subheader("3. Correspondance des colonnes (Mapping)")
         st.write("Associez chaque colonne Excel sélectionnée à sa colonne cible dans l'EPW.")
@@ -97,6 +103,16 @@ if uploaded_epw and uploaded_excel:
                         key=f"map_{i}"
                     )
                     mapping_config[col_excel] = target
+
+        # Affichage du récapitulatif des colonnes EPW qui seront modifiées
+        st.subheader("🔍 Récapitulatif des colonnes EPW à modifier")
+        modified_epw_columns = set(mapping_config.values())
+        if modified_epw_columns:
+            st.write("Les colonnes suivantes dans le fichier EPW seront modifiées :")
+            for col in sorted(modified_epw_columns):
+                st.write(f"- ✅ **{col}**")
+        else:
+            st.warning("Aucune colonne EPW n'est sélectionnée pour modification.")
 
         st.divider()
 
