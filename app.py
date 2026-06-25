@@ -30,7 +30,7 @@ if uploaded_epw and uploaded_excel:
         selected_excel_cols = st.multiselect(
             "Sélectionnez les colonnes de l'Excel à injecter (maintenez Ctrl/Cmd pour en choisir plusieurs)",
             options=all_excel_cols,
-            default=[c for c in all_excel_cols if 'Temp' in c or 'Hum' in c]
+            default=all_excel_cols
         )
 
         if not selected_excel_cols:
